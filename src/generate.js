@@ -2,12 +2,13 @@ const fs = require('fs-extra');
 const path = require('path');
 const axios = require('axios');
 const crypto = require('crypto');
+const unzipper = require('unzipper');
 const { optimize } = require('svgo');
 const FormData = require('form-data');
 
 const iconsDir = path.join(__dirname, 'icons');
 const tempDir = path.join(__dirname, 'temp');
-const distDir = path.join(__dirname, 'dist');
+const distDir = path.join(__dirname, '../dist');
 
 const svgConfig = {
     plugins: [
@@ -38,12 +39,12 @@ async function optimizeAllIcons() {
     try {
         const files = await readSvgIcons();
         const promises = files.map(async file => {
-            const filePath = path.join(iconsDir, file);
-            const svgData = await fs.readFile(filePath, 'utf8');
-            const optimizedSvg = await optimizeSvg(svgData);
-            await saveOptimizedSvg(file, optimizedSvg);
+          const filePath = path.join(iconsDir, file);
+          const svgData = await fs.readFile(filePath, 'utf8');
+          const optimizedSvg = await optimizeSvg(svgData);
+          await saveOptimizedSvg(file, optimizedSvg);
 
-            console.log(`${file} оптимизирован и сохранён в temp`);
+          console.log(`${file} оптимизирован и сохранён в temp`);
         });
         await Promise.all(promises);
     } catch (error) {
@@ -53,17 +54,29 @@ async function optimizeAllIcons() {
 
 async function generateConfig() {
     const files = await fs.readdir(tempDir);
-    const icons = files.filter(file => file.endsWith('.svg')).map((file, index) => {
+    const icons = await Promise.all(files.filter(file => file.endsWith('.svg')).map(async (file, index) => {
+        const filePath = path.join(tempDir, file);
+        const svgContent = await fs.readFile(filePath, 'utf8');
+
+        const pathMatch = svgContent.match(/<path d="([^"]+)"/);
+        const widthMatch = svgContent.match(/width="(\d+)"/);
+
         return {
             uid: generateUID(),
             css: path.basename(file, '.svg'),
-            code: 0xe001 + index,
-            src: "custom-icons"
+            code: 0xE001 + index,
+            src: "custom_icons",
+            selected: true,
+            svg: {
+                path: pathMatch ? pathMatch[1] : '',
+                width: widthMatch ? parseInt(widthMatch[1], 10) : 1000
+            },
+            search: [path.basename(file, '.svg')],
         };
-    });
+    }));
 
     const config = {
-        name: 'MyIconFont',
+        name: 'myiconfont',
         css_prefix_text: 'icon-',
         css_use_suffix: false,
         hinting: true,
@@ -113,10 +126,15 @@ async function downloadFont(sessionId) {
         console.log('Тип содержимого ответа:', response.headers['content-type']);
         console.log('Заголовки ответа:', response.headers);
 
-        if (response.status === 200 && response.headers['content-type'] === 'application/zip') {
+        if (response.status === 200) {
+            // Сохраняем файл и проверяем его содержимое
             const filePath = path.join(distDir, 'font.zip');
             await fs.writeFile(filePath, response.data);
             console.log('Шрифт загружен и сохранён в dist');
+
+            // Дополнительно: проверить содержимое zip-файла
+            const zip = await unzipper.Open.file(filePath);
+            console.log('Файлы внутри архива:', zip.files.map(file => file.path));
         } else {
             console.log('Ответ сервера:', Buffer.from(response.data).toString('utf8'));
             throw new Error('Ожидался zip-файл, но получен другой ответ');
@@ -131,7 +149,6 @@ async function downloadFont(sessionId) {
         throw error;
     }
 }
-
 
 async function generateFont() {
     try {
