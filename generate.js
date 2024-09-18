@@ -43,7 +43,7 @@ async function optimizeAllIcons(projectName, projectDir, tempDir) {
       const optimizedSvg = await optimizeSvg(svgData);
       await saveOptimizedSvg(tempDir, file, optimizedSvg);
 
-      console.log(`${file}  из проекта ${projectName} оптимизирован и сохранён во временную директорию`);
+      console.log(`${file} из проекта ${projectName} оптимизирован и сохранён во временную директорию`);
       });
       await Promise.all(promises);
   } catch (error) {
@@ -154,16 +154,62 @@ async function extractZip(zipFilePath, outputDir) {
   });
 }
 
+async function sortFiles(projectName) {
+  try {
+    const fontDir = path.join(__dirname, 'dist', projectName, 'font');
+    const projectDir = path.join(__dirname, 'dist', projectName);
+
+    if (await fs.pathExists(fontDir)) {
+      const [fontelloDir] = await fs.readdir(fontDir);
+
+      if (fontelloDir) {
+        const fontelloDirName = path.join(fontDir, fontelloDir)
+        const files = await fs.readdir(fontelloDirName);
+        const allowedFiles = ['css', 'font'];
+
+        await fs.ensureDir(projectDir);
+
+        for(const file of files) {
+          if(allowedFiles.includes(file)) {
+            const filePath = path.join(fontelloDirName, file);
+            const targetPath = path.join(projectDir, file);
+            const isDirectory = (await fs.stat(filePath)).isDirectory();
+
+            if (isDirectory && file === 'font') {
+              const targetFontDir = path.join(projectDir, 'font');
+              await fs.ensureDir(targetFontDir);
+              await fs.copy(filePath, targetFontDir);
+            } else {
+              await fs.move(filePath, targetPath, { overwrite: true });
+            }
+          }
+        }
+        await fs.remove(fontelloDirName);
+
+        const isFontDirEmpty = (await fs.readdir(fontDir)).length === 0;
+
+        if (isFontDirEmpty) {
+          await fs.remove(fontDir);
+        }
+
+        console.log(`Сортировка завершена. Оставлены только файлы: ${allowedFiles.join(', ')}`);
+      }
+    } else {
+      console.error(`Директория 'font' не найдена в проекте: ${projectName}`);
+    }
+  } catch (error) {
+    console.error(`Ошибка при обходе директории: ${error.message}`);
+  }
+}
+
 async function cleanup(tempDir, zipDir) {
   try {
-    if (fs.existsSync(tempDir)) {
-      await fs.remove(tempDir);
-      console.log('Папка temp удалена');
-    }
-
     if (fs.existsSync(zipDir)) {
       await fs.remove(zipDir);
-      console.log('Папка с архивом удалена');
+    }
+
+    if (fs.existsSync(tempDir)) {
+      await fs.remove(tempDir);
     }
   } catch (error) {
     console.error('Ошибка при удалении временных директорий:', error.message);
@@ -184,12 +230,8 @@ async function processProject(projectName) {
   const zipFilePath = await downloadFont(sessionId, tempDir);
 
   await extractZip(zipFilePath, outputDir);
-
-  await fs.remove(zipFilePath);
-  console.log(`Архив для проекта ${projectName} успешно удалён`);
-
-  await fs.remove(tempDir);
-  console.log(`Временная директория для проекта ${projectName} успешно удалена`);
+  await cleanup(zipFilePath, tempDir);
+  await sortFiles(projectName);
 }
 
 async function main() {
