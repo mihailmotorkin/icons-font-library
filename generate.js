@@ -5,6 +5,8 @@ const crypto = require('crypto');
 const unzipper = require('unzipper');
 const { optimize } = require('svgo');
 const FormData = require('form-data');
+const { config } = require('process');
+const { existsSync } = require('fs');
 
 const assetsDir = path.join(__dirname, 'assets');
 const distDir = path.join(__dirname, 'dist');
@@ -41,9 +43,8 @@ async function optimizeAllIcons(projectName, projectDir, tempDir) {
       const filePath = path.join(projectDir, file);
       const svgData = await fs.readFile(filePath, 'utf8');
       const optimizedSvg = await optimizeSvg(svgData);
-      await saveOptimizedSvg(tempDir, file, optimizedSvg);
 
-      console.log(`${file} из проекта ${projectName} оптимизирован и сохранён во временную директорию`);
+      await saveOptimizedSvg(tempDir, file, optimizedSvg);
       });
       await Promise.all(promises);
   } catch (error) {
@@ -165,7 +166,7 @@ async function sortFiles(projectName) {
       if (fontelloDir) {
         const fontelloDirName = path.join(fontDir, fontelloDir)
         const files = await fs.readdir(fontelloDirName);
-        const allowedFiles = ['css', 'font'];
+        const allowedFiles = ['css', 'font', 'config.json'];
 
         await fs.ensureDir(projectDir);
 
@@ -236,6 +237,10 @@ async function processProject(projectName) {
 
 async function main() {
   const projects = ['emotion', 'erp', 'ceres'];
+
+  if (fs.existsSync(distDir)) {
+    await fs.remove(distDir)
+  }
   await fs.ensureDir(distDir);
 
   for (const projectName of projects) {
