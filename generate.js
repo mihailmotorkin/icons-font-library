@@ -157,31 +157,31 @@ async function extractZip(zipFilePath, outputDir) {
 
 async function sortFiles(projectName) {
   try {
-    const fontDir = path.join(__dirname, 'dist', projectName, 'font');
+    const fontDir = path.join(__dirname, 'temp', projectName);
     const projectDir = path.join(__dirname, 'dist', projectName);
 
     if (await fs.pathExists(fontDir)) {
-      const [fontelloDir] = await fs.readdir(fontDir);
+      const [fontelloDirs] = await fs.readdir(fontDir);
 
-      if (fontelloDir) {
-        const fontelloDirName = path.join(fontDir, fontelloDir)
+      if (fontelloDirs) {
+        const fontelloDirName = path.join(fontDir, fontelloDirs)
         const files = await fs.readdir(fontelloDirName);
         const allowedFiles = ['css', 'font'];
 
         await fs.ensureDir(projectDir);
 
-        for(const file of files) {
-          if(allowedFiles.includes(file)) {
-            const filePath = path.join(fontelloDirName, file);
-            const targetPath = path.join(projectDir, file);
-            const isDirectory = (await fs.stat(filePath)).isDirectory();
+        for(const dir of files) {
+          if (allowedFiles.includes(dir)) {
+            const dirPath = path.join(fontelloDirName, dir);
+            const targetPath = path.join(projectDir, dir);
+            const isDirectory = (await fs.stat(dirPath)).isDirectory();
 
-            if (isDirectory && file === 'font') {
-              const targetFontDir = path.join(projectDir, 'font');
-              await fs.ensureDir(targetFontDir);
-              await fs.copy(filePath, targetFontDir);
+            if (isDirectory && dir === 'css') {
+              const targetCssDir = path.join(projectDir);
+              await fs.ensureDir(targetCssDir);
+              await fs.copy(dirPath, targetCssDir);
             } else {
-              await fs.move(filePath, targetPath, { overwrite: true });
+              await fs.move(dirPath, targetPath, { overwrite: true });
             }
           }
         }
@@ -203,12 +203,8 @@ async function sortFiles(projectName) {
   }
 }
 
-async function cleanup(tempDir, zipDir) {
+async function cleanup(tempDir) {
   try {
-    if (fs.existsSync(zipDir)) {
-      await fs.remove(zipDir);
-    }
-
     if (fs.existsSync(tempDir)) {
       await fs.remove(tempDir);
     }
@@ -220,7 +216,7 @@ async function cleanup(tempDir, zipDir) {
 async function processProject(projectName) {
   const projectDir = path.join(assetsDir, projectName);
   const tempDir = path.join(__dirname, 'temp');
-  const outputDir = path.join(distDir, projectName, 'font');
+  const outputDir = path.join(tempDir, projectName);
 
   await fs.ensureDir(tempDir);
   await fs.ensureDir(outputDir);
@@ -231,8 +227,8 @@ async function processProject(projectName) {
   const zipFilePath = await downloadFont(sessionId, tempDir);
 
   await extractZip(zipFilePath, outputDir);
-  await cleanup(zipFilePath, tempDir);
   await sortFiles(projectName);
+  await cleanup(tempDir);
 }
 
 async function main() {
