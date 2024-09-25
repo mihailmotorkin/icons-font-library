@@ -52,7 +52,7 @@ async function optimizeAllIcons(projectName, projectDir, tempDir) {
   }
 }
 
-async function generateConfig(tempDir) {
+async function generateConfig(tempDir, projectName) {
   const files = await fs.readdir(tempDir);
   const icons = await Promise.all(files.filter(file => file.endsWith('.svg')).map(async (file, index) => {
     const filePath = path.join(tempDir, file);
@@ -76,8 +76,8 @@ async function generateConfig(tempDir) {
   }));
 
   const config = {
-    name: 'iconfont',
-    css_prefix_text: 'icon-',
+    name: projectName,
+    css_prefix_text: projectName + '-',
     css_use_suffix: false,
     hinting: true,
     units_per_em: 1000,
@@ -166,7 +166,7 @@ async function sortFiles(projectName) {
       if (fontelloDir) {
         const fontelloDirName = path.join(fontDir, fontelloDir)
         const files = await fs.readdir(fontelloDirName);
-        const allowedFiles = ['css', 'font', 'config.json'];
+        const allowedFiles = ['css', 'font'];
 
         await fs.ensureDir(projectDir);
 
@@ -226,7 +226,7 @@ async function processProject(projectName) {
   await fs.ensureDir(outputDir);
   await optimizeAllIcons(projectName, projectDir, tempDir);
 
-  const configFilePath = await generateConfig(tempDir);
+  const configFilePath = await generateConfig(tempDir, projectName);
   const sessionId = await createFontelloSession(configFilePath);
   const zipFilePath = await downloadFont(sessionId, tempDir);
 
@@ -238,9 +238,7 @@ async function processProject(projectName) {
 async function main() {
   const projects = ['emotion', 'erp', 'ceres'];
 
-  if (fs.existsSync(distDir)) {
-    await fs.remove(distDir)
-  }
+  await fs.remove(distDir);
   await fs.ensureDir(distDir);
 
   for (const projectName of projects) {
