@@ -242,7 +242,7 @@ async function sortFiles(projectName) {
 async function combineCssFiles(projectName) {
   try {
     const projectDir = path.join(distDir, projectName);
-    const combinedCssFilePath = path.join(projectDir, `${projectName}-combined.css`);
+    const combinedCssFilePath = path.join(projectDir, `${projectName}-style.css`);
     // Путь к css файлам в корне проектной директории
     const animationCssPath = path.join(projectDir, 'animation.css');
     const projectCssPath = path.join(projectDir, `${projectName}.css`);
@@ -267,6 +267,11 @@ async function combineCssFiles(projectName) {
     // Сохранение объединенного файла
     await fs.writeFile(combinedCssFilePath, combinedCss);
     console.log(`Объединенный CSS файл создан для проекта: ${projectName}`);
+
+    await fs.remove(animationCssPath);
+    await fs.remove(projectCssPath);
+    console.log(`Старые CSS файлы удалены для проекта: ${projectName}`);
+
   } catch (error) {
     console.error(`Ошибка при объединении CSS файлов для проекта ${projectName}:`, error.message);
   }
