@@ -5,8 +5,6 @@ const crypto = require('crypto');
 const unzipper = require('unzipper');
 const { optimize } = require('svgo');
 const FormData = require('form-data');
-const { config } = require('process');
-const { existsSync } = require('fs');
 
 const assetsDir = path.join(__dirname, 'assets');
 const distDir = path.join(__dirname, 'dist');
@@ -155,51 +153,122 @@ async function extractZip(zipFilePath, outputDir) {
   });
 }
 
+async function removeIfEmpty(directory) {
+  if (await fs.pathExists(directory)) {
+    const files = await fs.readdir(directory);
+    if (files.length === 0) {
+      await fs.remove(directory);
+      console.log(`Удалена пустая директория: ${directory}`);
+    }
+  }
+}
+
+async function copyOrMoveFiles(sourceDir, targetDir, allowedFiles) {
+  const files = await fs.readdir(sourceDir);
+
+  for (const file of files) {
+    const srcPath = path.join(sourceDir, file);
+    const targetPath = path.join(targetDir, file);
+    const isDirectory = (await fs.stat(srcPath)).isDirectory();
+
+    if (allowedFiles.includes(file)) {
+      if (isDirectory) {
+        await fs.copy(srcPath, targetPath);
+      } else {
+        await fs.move(srcPath, targetPath, { overwrite: true });
+      }
+    }
+  }
+}
+
+async function cleanupCssDir(projectDir, projectName) {
+  try {
+    const cssDir = path.join(projectDir, 'css');
+    // Проверяем, существует ли директория css
+    if (await fs.pathExists(cssDir)) {
+      const files = await fs.readdir(cssDir);
+      // Проходим по файлам и переносим только animation.css и projectName.css в корень директории проекта
+      for (const file of files) {
+        const filePath = path.join(cssDir, file);
+
+        if (file === 'animation.css' || file === `${projectName}.css`) {
+          const targetPath = path.join(projectDir, file);
+          await fs.move(filePath, targetPath, { overwrite: true });
+        }
+      }
+      // После переноса файлов удаляем директорию css
+      await fs.remove(cssDir);
+      console.log(`Очистка директории css завершена для проекта: ${projectName}`);
+    } else {
+      console.log(`Директория css не найдена для проекта: ${projectName}`);
+    }
+  } catch (error) {
+    console.error(`Ошибка при очистке директории css для проекта ${projectName}: ${error.message}`);
+  }
+}
+
+
+
 async function sortFiles(projectName) {
   try {
     const fontDir = path.join(__dirname, 'temp', projectName);
     const projectDir = path.join(__dirname, 'dist', projectName);
 
     if (await fs.pathExists(fontDir)) {
-      const [fontelloDirs] = await fs.readdir(fontDir);
+      const [fontelloDirName] = await fs.readdir(fontDir);
 
-      if (fontelloDirs) {
-        const fontelloDirName = path.join(fontDir, fontelloDirs)
-        const files = await fs.readdir(fontelloDirName);
+      if (fontelloDirName) {
+        const fontelloPath = path.join(fontDir, fontelloDirName);
         const allowedFiles = ['css', 'font'];
 
         await fs.ensureDir(projectDir);
+        await copyOrMoveFiles(fontelloPath, projectDir, allowedFiles);
 
-        for(const dir of files) {
-          if (allowedFiles.includes(dir)) {
-            const dirPath = path.join(fontelloDirName, dir);
-            const targetPath = path.join(projectDir, dir);
-            const isDirectory = (await fs.stat(dirPath)).isDirectory();
+        await cleanupCssDir(projectDir, projectName);
 
-            if (isDirectory && dir === 'css') {
-              const targetCssDir = path.join(projectDir);
-              await fs.ensureDir(targetCssDir);
-              await fs.copy(dirPath, targetCssDir);
-            } else {
-              await fs.move(dirPath, targetPath, { overwrite: true });
-            }
-          }
-        }
-        await fs.remove(fontelloDirName);
+        await removeIfEmpty(fontelloPath);
+        await removeIfEmpty(fontDir);
 
-        const isFontDirEmpty = (await fs.readdir(fontDir)).length === 0;
-
-        if (isFontDirEmpty) {
-          await fs.remove(fontDir);
-        }
-
-        console.log(`Сортировка завершена. Оставлены только файлы: ${allowedFiles.join(', ')}`);
+        console.log(`Файлы успешно отсортированы для проекта: ${projectName}`);
       }
     } else {
       console.error(`Директория 'font' не найдена в проекте: ${projectName}`);
     }
   } catch (error) {
-    console.error(`Ошибка при обходе директории: ${error.message}`);
+    console.error(`Ошибка при сортировке файлов: ${error.message}`);
+  }
+}
+
+async function combineCssFiles(projectName) {
+  try {
+    const projectDir = path.join(distDir, projectName);
+    const combinedCssFilePath = path.join(projectDir, `${projectName}-combined.css`);
+    // Путь к css файлам в корне проектной директории
+    const animationCssPath = path.join(projectDir, 'animation.css');
+    const projectCssPath = path.join(projectDir, `${projectName}.css`);
+    // Проверка существования файлов
+    const animationCssExists = await fs.pathExists(animationCssPath);
+    const projectCssExists = await fs.pathExists(projectCssPath);
+
+    if (!animationCssExists) {
+      console.error(`Файл animation.css не найден для проекта ${projectName}.`);
+      return;
+    }
+
+    if (!projectCssExists) {
+      console.error(`Файл ${projectName}.css не найден для проекта ${projectName}.`);
+      return;
+    }
+    // Чтение содержимого файлов
+    const animationCss = await fs.readFile(animationCssPath, 'utf8');
+    const projectCss = await fs.readFile(projectCssPath, 'utf8');
+    // Объединение содержимого
+    const combinedCss = `${animationCss}\n${projectCss}`;
+    // Сохранение объединенного файла
+    await fs.writeFile(combinedCssFilePath, combinedCss);
+    console.log(`Объединенный CSS файл создан для проекта: ${projectName}`);
+  } catch (error) {
+    console.error(`Ошибка при объединении CSS файлов для проекта ${projectName}:`, error.message);
   }
 }
 
@@ -229,6 +298,7 @@ async function processProject(projectName) {
   await extractZip(zipFilePath, outputDir);
   await sortFiles(projectName);
   await cleanup(tempDir);
+  await combineCssFiles(projectName);
 }
 
 async function main() {
